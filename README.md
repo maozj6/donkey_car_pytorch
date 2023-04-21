@@ -17,4 +17,4 @@ training set:60,000
 
 test set: 10,000
 
-4. extract control instructions from dataset( better to transfer)
+4. extract control instructions from dataset( better to transferA)

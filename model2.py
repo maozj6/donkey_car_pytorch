@@ -7,16 +7,16 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
 
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=5, stride=1)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=3, kernel_size=3, stride=1)
         self.maxpool1 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.relu = nn.ReLU(True)
 
-        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=5, stride=1)
+        self.conv2 = nn.Conv2d(in_channels=3, out_channels=6, kernel_size=3, stride=1)
         self.maxpool2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.fc1 = nn.Linear(89888, 4096)
-        self.fc2 = nn.Linear(4096, 1024)
-        self.fc3 = nn.Linear(1024, 30)
+        self.fc1 = nn.Linear(17496, 1024)
+        self.fc2 = nn.Linear(1024, 256)
+        self.fc3 = nn.Linear(256, 30)
 
         # self.conv1 = nn.Conv2d(1, 6, 3)
         # self.pool = nn.MaxPool2d(2, 2)
