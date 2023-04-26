@@ -8,25 +8,24 @@ from torch.autograd import Variable
 from torch.utils.data import Dataset
 import numpy as np
 import os
-import model2
 from sklearn.metrics import confusion_matrix
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-
+import time
 from functools import partial
-
+import cv2
 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
 
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=3, kernel_size=3, stride=1)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=15, kernel_size=3, stride=1)
         self.maxpool1 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.relu = nn.ReLU(True)
 
-        self.conv2 = nn.Conv2d(in_channels=3, out_channels=6, kernel_size=3, stride=1)
+        self.conv2 = nn.Conv2d(in_channels=15, out_channels=9, kernel_size=3, stride=1)
         self.maxpool2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.fc1 = nn.Linear(17496, 1024)
+        self.fc1 = nn.Linear(26244 , 1024)
         self.fc2 = nn.Linear(1024, 256)
         self.fc3 = nn.Linear(256, 2)
 
@@ -51,12 +50,11 @@ class Net(nn.Module):
         x = self.fc3(x)  # output(num_classes)
 
         return x
-
 class trainData(Dataset):
     def __init__(self, path="/home/mao/23Spring/cars/racing_car_data/record/train/",leng=0):
         data=np.load(path)
-        self.obs=data["obs"]
-        self.lbl=data["lbl"]
+        self.obs=np.load('train.npz')["obs"]
+        self.lbl=np.load('train.npz')["lbl"]
 
     # train_data =
     # x_train = train_data
@@ -176,8 +174,8 @@ class EarlyStopping(object): # pylint: disable=R0902
 class testData(Dataset):
     def __init__(self, path="/home/mao/23Spring/cars/racing_car_data/record/train/", leng=0):
         data = np.load(path)
-        self.obs = data["obs"]
-        self.lbl = data["lbl"]
+        self.obs = np.load('test.npz')["obs"]
+        self.lbl = np.load('test.npz')["lbl"]
 
     # train_data =
     # x_train = train_data
@@ -190,6 +188,7 @@ class testData(Dataset):
 
     def __len__(self):
         return len(self.lbl)
+
 def save_checkpoint(state, is_best, filename, best_filename):
     """ Save state in filename. Also save in best_filename if is_best. """
     torch.save(state, filename)
@@ -197,106 +196,58 @@ def save_checkpoint(state, is_best, filename, best_filename):
         torch.save(state, best_filename)
 if __name__ == '__main__':
     device='cuda'
-
-    best_filename = 'models/model2_track.tar'
+    acts_space=[(-1, 0.05), (-1, 0.15000000000000002), (-1, 0.25), (-1, 0.35000000000000003), (-1, 0.45), (-1, 0.55),
+     (-1, 0.6500000000000001), (-1, 0.7500000000000001), (-1, 0.8500000000000001), (-1, 0.9500000000000001), (0, 0.05),
+     (0, 0.15000000000000002), (0, 0.25), (0, 0.35000000000000003), (0, 0.45), (0, 0.55), (0, 0.6500000000000001),
+     (0, 0.7500000000000001), (0, 0.8500000000000001), (0, 0.9500000000000001), (1, 0.05), (1, 0.15000000000000002),
+     (1, 0.25), (1, 0.35000000000000003), (1, 0.45), (1, 0.55), (1, 0.6500000000000001), (1, 0.7500000000000001),
+     (1, 0.8500000000000001), (1, 0.9500000000000001)]
+    best_filename = 'models/model2_simu.tar'
     filename = 'models/model2_checkpoint.tar'
-    train_dataset = trainData(path="tracktrain.npz",leng=0)
-    test_dataset = testData(path="tracktrain.npz",leng=0)
-
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+    # train_dataset = trainData(path="train.npz",leng=0)
+    # test_dataset = testData(path="test.npz",leng=0)
+    #
+    # train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    # test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     cur_best = None
-
-    net=model2.Net()
+    state=torch.load(best_filename)
+    net=Net()
+    net.load_state_dict(state['state_dict'])
     net.to(device)
 
-    cirterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(net.parameters())
+    #gpu speed:0.00039920692443847655
+    #cpu speed:0.0019628223896026612
+
     # torch.save(net.state_dict(), "./testsize.pth")
-    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
-    earlystopping =EarlyStopping('max', patience=6)  # 关于 EarlyStopping 的代码可先看博客后面的内容
-    for epoch in range(1001):
+
+    time0=time.time()
+    for epoch in range(5):
+        time0 = time.time()
+
         running_loss = 0.0
         correct = 0
         total = 0
         losssum = 0
         counter = 0
-        net.train()
-        for i, data in enumerate(train_loader, 0):
-            total = total + len(data[0])
-            inputs, labels = data
-            inputs, labels = Variable(inputs), Variable(labels)
-
-            optimizer.zero_grad()  # 优化器清零
-            inputs = inputs.to(torch.float32)
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-            outputs = net(inputs)
-            _, predicted = torch.max(outputs.data, 1)
-            correct += (predicted == labels).sum().item()
-            loss = cirterion(outputs, labels)
-            loss.backward()
-            optimizer.step()  # 优化
-            running_loss += loss.item()
-            losssum += loss.item()
-            if i % 200 == 199:
-                # print('[%d %5d] acc: %.3f' % (epoch + 1, i + 1, ))
-
-                running_loss = 0.0
-
-                correct = 0
-                total = 0
-            counter = counter + 1
-        print('[training:%d ] acc: %.6f  loss: %.7f' % (epoch + 1,  correct / total, losssum / total))
-        train_loss=losssum / total
-
         net.eval()
-        test_loss = 0
-        # target_num = torch.zeros((1, 2))  # n_classes为分类任务类别数量
-        # predict_num = torch.zeros((1, 2))
-        # acc_num = torch.zeros((1, 2))
-        test_preds = []
-        test_trues = []
-        with torch.no_grad():
 
-            for i, data in enumerate(test_loader, 0):
-                total = total + len(data[0])
-                inputs, labels = data
-                inputs, labels = Variable(inputs), Variable(labels)
-                # optimizer.zero_grad()  # 优化器清零
-                inputs = inputs.to(torch.float32)
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-                # info2 = info2.to(torch.float32)
-                outputs = net(inputs)
-                _, predicted = torch.max(outputs.data, 1)
+        train_data=[]
+        datanames = os.listdir('/home/mao/23Spring/cars/donkey_train/data/images')
+        for dataname in datanames:
+            # if os.path.splitext(dataname)[1] == '.json':
+            #     # 目录下包含.json的文件
+            #     train_lbl.append(logpath + dataname)
+            if os.path.splitext(dataname)[1] == '.jpg':
+                train_data.append('/home/mao/23Spring/cars/donkey_train/data/images/' + dataname)
+        train_data = sorted(train_data, key=lambda file: os.path.getctime(file))
 
-                test_preds.extend(predicted.detach().cpu().numpy())
-                test_trues.extend(labels.detach().cpu().numpy())
+        for i in range(0, 10000):
+            inputs=torch.tensor(cv2.imread(train_data[i]))
+            inputs=inputs.to(device)
+            outputs = net(inputs.float().view(1,3,224,224))
+            print(outputs)
 
-                correct += (predicted == labels).sum().item()
-                loss = cirterion(outputs, labels)
-                losssum += loss.item()
-            print('[test: %d ] acc: %.6f  loss: %.7f' % (epoch + 1,  correct / total, losssum / total))
-        scheduler.step(correct / total)
-        earlystopping.step(correct / total)
-        testacc=correct / total
-        is_best = not cur_best or testacc > cur_best
-        if is_best:
-            cur_best = testacc
 
-        save_checkpoint({
-            'epoch': epoch,
-            'state_dict': net.state_dict(),
-            'test_loss': test_loss,
-            "test_acc": testacc,
-            'optimizer': optimizer.state_dict(),
-            'scheduler': scheduler.state_dict(),
-            'earlystopping': earlystopping.state_dict(),
-            "lr": optimizer.state_dict()['param_groups'][0]['lr'],
-        }, is_best, filename, best_filename)
-        if earlystopping.stop:
-            print("End of Training because of early stopping at epoch {}".format(epoch))
-            break
-    print('finished training!')
-    print("end")
+        print(time.time()-time0)
+        print((time.time()-time0)/total)
+

@@ -14,49 +14,11 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from functools import partial
 
-
-class Net(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=3, kernel_size=3, stride=1)
-        self.maxpool1 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.relu = nn.ReLU(True)
-
-        self.conv2 = nn.Conv2d(in_channels=3, out_channels=6, kernel_size=3, stride=1)
-        self.maxpool2 = nn.MaxPool2d(kernel_size=2, stride=2)
-
-        self.fc1 = nn.Linear(17496, 1024)
-        self.fc2 = nn.Linear(1024, 256)
-        self.fc3 = nn.Linear(256, 2)
-
-        # self.conv1 = nn.Conv2d(1, 6, 3)
-        # self.pool = nn.MaxPool2d(2, 2)
-        # self.conv2 = nn.Conv2d(6, 16, 5)
-        # self.fc1 = nn.Linear(44944, 4096)
-        # self.fc2 = nn.Linear(4096, 512)
-        # self.fc3 = nn.Linear(512,30)
-    def forward(self, x):
-        x = self.conv1(x)  # input(3, 32, 32)  output(16, 28, 28)
-        x = self.relu(x)  # 激活函数
-        x = self.maxpool1(x)  # output(16, 14, 14)
-        x = self.conv2(x)  # output(32, 10, 10)
-        x = self.relu(x)  # 激活函数
-        x = self.maxpool2(x)  # output(32, 5, 5)
-        x = torch.flatten(x, start_dim=1)  # output(32*5*5) N代表batch_size
-        x = self.fc1(x)  # output(120)
-        x = self.relu(x)  # 激活函数
-        x = self.fc2(x)  # output(84)
-        x = self.relu(x)  # 激活函数
-        x = self.fc3(x)  # output(num_classes)
-
-        return x
-
 class trainData(Dataset):
     def __init__(self, path="/home/mao/23Spring/cars/racing_car_data/record/train/",leng=0):
         data=np.load(path)
-        self.obs=data["obs"]
-        self.lbl=data["lbl"]
+        self.obs=np.load('train.npz')["obs"]
+        self.lbl=np.load('train.npz')["lbl"]
 
     # train_data =
     # x_train = train_data
@@ -66,9 +28,9 @@ class trainData(Dataset):
     # y_test = test_data['lbl']
     def __getitem__(self, index):
 
-        return self.obs[index].reshape(1,224,224),self.lbl[index]
+        return self.obs[index].reshape(1,224,224),self.lbl[index+2]
     def __len__(self):
-        return len(self.lbl)
+        return len(self.lbl)-2
 
 class EarlyStopping(object): # pylint: disable=R0902
     """
@@ -176,8 +138,8 @@ class EarlyStopping(object): # pylint: disable=R0902
 class testData(Dataset):
     def __init__(self, path="/home/mao/23Spring/cars/racing_car_data/record/train/", leng=0):
         data = np.load(path)
-        self.obs = data["obs"]
-        self.lbl = data["lbl"]
+        self.obs = np.load('test.npz')["obs"]
+        self.lbl = np.load('test.npz')["lbl"]
 
     # train_data =
     # x_train = train_data
@@ -186,10 +148,11 @@ class testData(Dataset):
     # x_test = test_data["obs"]
     # y_test = test_data['lbl']
     def __getitem__(self, index):
-        return self.obs[index].reshape(1,224,224), self.lbl[index]
+        return self.obs[index].reshape(1,224,224), self.lbl[index+2]
 
     def __len__(self):
-        return len(self.lbl)
+        return len(self.lbl)-2
+
 def save_checkpoint(state, is_best, filename, best_filename):
     """ Save state in filename. Also save in best_filename if is_best. """
     torch.save(state, filename)
@@ -198,10 +161,10 @@ def save_checkpoint(state, is_best, filename, best_filename):
 if __name__ == '__main__':
     device='cuda'
 
-    best_filename = 'models/model2_track.tar'
-    filename = 'models/model2_checkpoint.tar'
-    train_dataset = trainData(path="tracktrain.npz",leng=0)
-    test_dataset = testData(path="tracktrain.npz",leng=0)
+    best_filename = 'models/model2_alte.tar'
+    filename = 'models/model2_late_checkpoint.tar'
+    train_dataset = trainData(path="train.npz",leng=0)
+    test_dataset = testData(path="test.npz",leng=0)
 
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
@@ -247,8 +210,8 @@ if __name__ == '__main__':
                 correct = 0
                 total = 0
             counter = counter + 1
-        print('[training:%d ] acc: %.6f  loss: %.7f' % (epoch + 1,  correct / total, losssum / total))
-        train_loss=losssum / total
+        print('[training:%d ] acc: %.3f  loss: %.3f' % (epoch + 1,  correct / total, losssum / total))
+
 
         net.eval()
         test_loss = 0
@@ -277,7 +240,7 @@ if __name__ == '__main__':
                 correct += (predicted == labels).sum().item()
                 loss = cirterion(outputs, labels)
                 losssum += loss.item()
-            print('[test: %d ] acc: %.6f  loss: %.7f' % (epoch + 1,  correct / total, losssum / total))
+            print('[test: %d ] acc: %.3f  loss: %.3f' % (epoch + 1,  correct / total, losssum / total))
         scheduler.step(correct / total)
         earlystopping.step(correct / total)
         testacc=correct / total

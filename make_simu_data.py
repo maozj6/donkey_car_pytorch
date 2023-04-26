@@ -8,10 +8,10 @@ from torch.autograd import Variable
 from torch.utils.data import Dataset
 import numpy as np
 import os
-import model2
 from sklearn.metrics import confusion_matrix
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-
+import json
+import cv2
 from functools import partial
 
 
@@ -19,14 +19,14 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
 
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=3, kernel_size=3, stride=1)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=15, kernel_size=3, stride=1)
         self.maxpool1 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.relu = nn.ReLU(True)
 
-        self.conv2 = nn.Conv2d(in_channels=3, out_channels=6, kernel_size=3, stride=1)
+        self.conv2 = nn.Conv2d(in_channels=15, out_channels=9, kernel_size=3, stride=1)
         self.maxpool2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.fc1 = nn.Linear(17496, 1024)
+        self.fc1 = nn.Linear(26244 , 1024)
         self.fc2 = nn.Linear(1024, 256)
         self.fc3 = nn.Linear(256, 2)
 
@@ -52,23 +52,6 @@ class Net(nn.Module):
 
         return x
 
-class trainData(Dataset):
-    def __init__(self, path="/home/mao/23Spring/cars/racing_car_data/record/train/",leng=0):
-        data=np.load(path)
-        self.obs=data["obs"]
-        self.lbl=data["lbl"]
-
-    # train_data =
-    # x_train = train_data
-    # y_train = train_data['lbl']
-    # test_data = np.load("test.npz")
-    # x_test = test_data["obs"]
-    # y_test = test_data['lbl']
-    def __getitem__(self, index):
-
-        return self.obs[index].reshape(1,224,224),self.lbl[index]
-    def __len__(self):
-        return len(self.lbl)
 
 class EarlyStopping(object): # pylint: disable=R0902
     """
@@ -174,10 +157,10 @@ class EarlyStopping(object): # pylint: disable=R0902
 
 
 class testData(Dataset):
-    def __init__(self, path="/home/mao/23Spring/cars/racing_car_data/record/train/", leng=0):
-        data = np.load(path)
-        self.obs = data["obs"]
-        self.lbl = data["lbl"]
+    def __init__(self,data,lbl, leng=0):
+        # data = np.load(path)
+        self.obs = data
+        self.lbl = lbl
 
     # train_data =
     # x_train = train_data
@@ -186,7 +169,20 @@ class testData(Dataset):
     # x_test = test_data["obs"]
     # y_test = test_data['lbl']
     def __getitem__(self, index):
-        return self.obs[index].reshape(1,224,224), self.lbl[index]
+        obs=cv2.imread(self.obs[index])
+        # print(index)
+        # print(self.obs[index])
+        # print(obs.shape)
+
+        # obs = cv2.resize(obs, dsize=(224, 224), fx=1, fy=1, interpolation=cv2.INTER_LINEAR)
+        obs = cv2.resize(obs, (224, 224), interpolation=cv2.INTER_CUBIC)
+        with open(self.lbl[index], 'r') as fcc_file:
+            fcc_data = json.load(fcc_file)
+            lbl=[]
+            lbl.append(fcc_data['user/throttle'])
+            lbl.append(fcc_data['user/angle'])
+
+        return obs.reshape(3,224,224), np.array(lbl,dtype=float)
 
     def __len__(self):
         return len(self.lbl)
@@ -196,25 +192,49 @@ def save_checkpoint(state, is_best, filename, best_filename):
     if is_best:
         torch.save(state, best_filename)
 if __name__ == '__main__':
+
+    import os
+    train_data=[]
+    test_data=[]
+    train_lbl=[]
+    test_lbl=[]
+    logpath="/home/mao/23Spring/cars/donkey_log/"
+    datanames = os.listdir(logpath)
+    for dataname in datanames:
+        if os.path.splitext(dataname)[1] == '.json':
+            # 目录下包含.json的文件
+            train_lbl.append(logpath+dataname)
+        if os.path.splitext(dataname)[1] == '.jpg':
+            train_data.append(logpath+dataname)
+
+    train_data = sorted(train_data, key=lambda file: os.path.getctime(file))
+    train_lbl = sorted(train_lbl, key=lambda file: os.path.getctime(file))
+    test_lbl=train_lbl[7000:]
+    test_data=train_data[7000:]
+
+    train_data=train_data[0:7000]
+
+    train_lbl=train_lbl[0:7000]
+
     device='cuda'
 
-    best_filename = 'models/model2_track.tar'
+    best_filename = 'models/model2_simu.tar'
     filename = 'models/model2_checkpoint.tar'
-    train_dataset = trainData(path="tracktrain.npz",leng=0)
-    test_dataset = testData(path="tracktrain.npz",leng=0)
+    train_dataset = testData(data=train_data,lbl=train_lbl,leng=0)
+    test_dataset = testData(data=test_data,lbl=test_lbl,leng=0)
 
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
     cur_best = None
 
-    net=model2.Net()
+    net=Net()
     net.to(device)
 
-    cirterion = nn.CrossEntropyLoss()
+    cirterion = nn.MSELoss()
     optimizer = optim.Adam(net.parameters())
     # torch.save(net.state_dict(), "./testsize.pth")
-    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
-    earlystopping =EarlyStopping('max', patience=6)  # 关于 EarlyStopping 的代码可先看博客后面的内容
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
+    earlystopping =EarlyStopping('min', patience=6)  # 关于 EarlyStopping 的代码可先看博客后面的内容
     for epoch in range(1001):
         running_loss = 0.0
         correct = 0
@@ -232,9 +252,7 @@ if __name__ == '__main__':
             inputs = inputs.to(device)
             labels = labels.to(device)
             outputs = net(inputs)
-            _, predicted = torch.max(outputs.data, 1)
-            correct += (predicted == labels).sum().item()
-            loss = cirterion(outputs, labels)
+            loss = cirterion(outputs, labels.float())
             loss.backward()
             optimizer.step()  # 优化
             running_loss += loss.item()
@@ -247,7 +265,7 @@ if __name__ == '__main__':
                 correct = 0
                 total = 0
             counter = counter + 1
-        print('[training:%d ] acc: %.6f  loss: %.7f' % (epoch + 1,  correct / total, losssum / total))
+        print('[training:%d ]  loss: %.7f' % (epoch + 1,   losssum / total))
         train_loss=losssum / total
 
         net.eval()
@@ -269,27 +287,20 @@ if __name__ == '__main__':
                 labels = labels.to(device)
                 # info2 = info2.to(torch.float32)
                 outputs = net(inputs)
-                _, predicted = torch.max(outputs.data, 1)
 
-                test_preds.extend(predicted.detach().cpu().numpy())
-                test_trues.extend(labels.detach().cpu().numpy())
-
-                correct += (predicted == labels).sum().item()
-                loss = cirterion(outputs, labels)
+                loss = cirterion(outputs, labels.float())
                 losssum += loss.item()
-            print('[test: %d ] acc: %.6f  loss: %.7f' % (epoch + 1,  correct / total, losssum / total))
-        scheduler.step(correct / total)
-        earlystopping.step(correct / total)
-        testacc=correct / total
-        is_best = not cur_best or testacc > cur_best
+            print('[test: %d ]  loss: %.7f' % (epoch + 1,  losssum / total))
+        scheduler.step(train_loss)
+        earlystopping.step(train_loss)
+        is_best = not cur_best or train_loss < cur_best
         if is_best:
-            cur_best = testacc
+            cur_best = train_loss
 
         save_checkpoint({
             'epoch': epoch,
             'state_dict': net.state_dict(),
             'test_loss': test_loss,
-            "test_acc": testacc,
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict(),
             'earlystopping': earlystopping.state_dict(),
