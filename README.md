@@ -1,5 +1,15 @@
 
+Final:
 
+train: train_new
+
+data: make_data
+
+dataset: best_data2
+
+run:run_test
+
+saved_model:model2_newbest
 
 Several things to train a donkey car controller
 1. install pytorch on jetson nano
